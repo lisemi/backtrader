@@ -168,3 +168,8 @@ X.Y.Z.I
   - Z: Revision version number. To be changed for documentation updates, small
     changes, small bug fixes
   - I: Number of Indicators already built into the platform
+
+
+==============================
+code description:
+https://www.zhihu.com/column/c_1604522311041966081
