@@ -20,7 +20,9 @@ pro = ts.pro_api(token)
 # 使用Tushare获取数据，要严格保持OHLC的格式
 
 def get_data_bytushare(code,start_date,end_date):
-    df = ts.pro_bar(ts_code=code, adj='qfq',start_date=start_date, end_date=end_date)
+    # 普通用户（低积分）没有权限使用该接口。
+    # df = ts.pro_bar(ts_code=code, adj='qfq',start_date=start_date, end_date=end_date)
+    df = pro.daily(ts_code=code, start_date=start_date, end_date=end_date).sort_values(by='trade_date', ascending=True)
     df = df[['trade_date', 'open', 'high', 'low', 'close','vol']]
     df.columns = ['trade_date', 'open', 'high', 'low', 'close','volume']
     df.trade_date = pd.to_datetime(df.trade_date)

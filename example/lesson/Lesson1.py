@@ -9,12 +9,13 @@ import datetime
 # 实例化 cerebro
 cerebro = bt.Cerebro()
 
-# 将制定列解析为日期的方式读取文件内容
-daily_price = pd.read_csv("Data/daily_price.csv", parse_dates=['datetime'])
-trade_info = pd.read_csv("Data/trade_info.csv", parse_dates=['trade_date'])
+# 将指定列解析为日期的方式读取文件内容
+daily_price = pd.read_csv("Data/daily_price.csv", parse_dates=['datetime'])  # 510只股票日度行情数据集
+trade_info = pd.read_csv("Data/trade_info.csv", parse_dates=['trade_date'])  # 510只股票月末调仓成分股数据集
 #%%
 
 # 按股票代码，依次循环传入数据
+# 由于回测是多个股票数据，因此需要一个循环把所有股票数据加入到backtrader中。另外这么多股票数据，plot画图也很难
 for stock in daily_price['sec_code'].unique():
     # 日期对齐
     data = pd.DataFrame(daily_price['datetime'].unique(), columns=['datetime'])  # 获取回测区间内所有交易日
@@ -30,7 +31,7 @@ for stock in daily_price['sec_code'].unique():
     # 导入数据
     datafeed = bt.feeds.PandasData(dataname=data_, fromdate=datetime.datetime(2019, 1, 2),
                                    todate=datetime.datetime(2021, 1, 28))
-    cerebro.adddata(datafeed, name=stock)  # 通过 name 实现数据集与股票的一一对应
+    cerebro.adddata(datafeed, name=stock)  # 通过 name 实现数据集与股票的一一对应。因为是多个股票，因此导入时需要对其命名
     print(f"{stock} Done !")
 
 print("All stock Done !")
@@ -50,6 +51,7 @@ class TestStrategy(bt.Strategy):
         self.order_list = []  # 记录以往订单，方便调仓日对未完成订单做处理
         self.buy_stocks_pre = []  # 记录上一期持仓
 
+    # 判断每个交易日是否为调仓日，如果是调仓日就按调仓权重卖出旧股，买入新股。
     def next(self):
         dt = self.datas[0].datetime.date(0)  # 获取当前的回测时间点
         # 如果是调仓日，则进行调仓操作
@@ -79,6 +81,7 @@ class TestStrategy(bt.Strategy):
             for stock in long_list:
                 w = buy_stocks_data.query(f"sec_code=='{stock}'")['weight'].iloc[0]  # 提取持仓权重
                 data = self.getdatabyname(stock)
+                #  按持仓百分比下单
                 order = self.order_target_percent(data=data, target=w * 0.95)  # 为减少可用资金不足的情况，留 5% 的现金做备用
                 self.order_list.append(order)
 

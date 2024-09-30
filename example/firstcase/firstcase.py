@@ -12,6 +12,9 @@ import tushare as ts
 # sys.path.insert(0, project_package_dir)
 import backtrader as bt
 
+start_time = '20170101'
+end_time = '20200101'
+
 def get_data(code='600519.SH',starttime='20170101',endtime='20200101'):
     ts.set_token('91c9159e9e4e8694ee81475ff5e0b3af938a0640f84f5fc964e6d5bb')
     pro = ts.pro_api()
@@ -19,15 +22,41 @@ def get_data(code='600519.SH',starttime='20170101',endtime='20200101'):
     df = pro.daily(ts_code=code, start_date=starttime, end_date=endtime).sort_values(by='trade_date', ascending=True)
     df.index = pd.to_datetime(df.trade_date)
     df['openinterest'] = 0
-    df = df[['open','high','low','close','vol','amount','openinterest']]
+    df = df[['open','high','low','close','vol','openinterest']]
+
+    # # 缺失值处理：日期对齐时会使得有些交易日的数据为空，所以需要对缺失数据进行填充
+    df.loc[:, ['vol', 'openinterest']] = df.loc[:, ['vol', 'openinterest']].fillna(0)
+    df.loc[:, ['open', 'high', 'low', 'close']] = df.loc[:, ['open', 'high', 'low', 'close']].fillna(method='pad')  # 使用前一个有效值来填充 NaN
+    df.loc[:, ['open', 'high', 'low', 'close']] = df.loc[:, ['open', 'high', 'low', 'close']].fillna(0)
+
+    print('isna: ', df.isna().sum()) 
+    print('inf: ', df.isin([float('inf'), float('-inf')]).sum())
+
+    # 由于backtrader接收的收据必须是['open','high','low','close','volume','openinterest']
+    # 并且顺序也不能变，因此这里需要把vol重命名为volume。
+    df.rename(columns={'vol': 'volume'}, inplace=True)
+
     return df
- 
- 
-stock_df =get_data()
-fromdate = datetime(2017,1,1)
-todate = datetime(2020,1,1)
-data = bt.feeds.PandasData(dataname=stock_df,fromdate=fromdate,todate=todate)
-print(stock_df.head())
+
+
+def feed_data(stock_df=None):
+    fromdate = datetime(2017,1,1)
+    todate = datetime(2020,1,1)
+    # DataFrame 转换为 backtrader 可使用的数据格式.确保 backtrader 知道哪些列代表 open, high, low, close, volume, datetime 等
+    data = bt.feeds.PandasData(dataname=stock_df,
+                               fromdate=fromdate,   # 读取的起始时间
+                               todate=todate)       # 读取的结束时间
+    # 如果数据源列名称与backtrader要求的不同，可以如get_data()处理数据源，或者在PandasData时指定，如下：
+    # data = bt.feeds.PandasData(dataname=stock_df,
+    #                            datetime='trade_date',
+    #                            open='open',
+    #                            high='high',
+    #                            low='low',
+    #                            close='close',
+    #                            volume='vol',
+    #                            openinterest='openinterest')
+
+    return data
  #%%
 
  # 交易策略：当前价格大于当前移动平均值则卖出，否则买入
@@ -63,7 +92,7 @@ class MyStrategy(bt.Strategy):
     def next(self):
         # 打印收盘价  
         # self.log('Close, %.2f' % self.dataclose[0]) 
-        # 如果有订单正在挂起，不操作  
+        # 如果有订单正在执行，则返回 
         if self.order: 
             return 
 
@@ -113,21 +142,28 @@ class MyStrategy(bt.Strategy):
             return 
         self.log('交易利润, 毛利润 %.2f, 净利润 %.2f' % 
             (trade.pnl, trade.pnlcomm)) 
-        
+# %%        
  
+stock_df =get_data()
+print(stock_df)
+# %%
+bt_data = feed_data(stock_df)
+
 cerebro = bt.Cerebro()
-cerebro.adddata(data)
+cerebro.adddata(bt_data)
 cerebro.addstrategy(MyStrategy)
 startcash = 1000000
 cerebro.broker.setcash(startcash)
 cerebro.broker.setcommission(0.0002)
  
-s = fromdate.strftime("%Y-%m-%d")
-t = todate.strftime("%Y-%m-%d")
+s = datetime.strptime(start_time, '%Y%m%d').date()
+t = datetime.strptime(end_time, '%Y%m%d').date()
 print(f"初始资金：{startcash}\n回测时间:{s}-{t}")
 cerebro.run()
 portval = cerebro.broker.getvalue()
 print(f"剩余总资金：{portval}\n回测时间:{s}-{t}")
-cerebro.plot()
-# cerebro.plot(iplot=False, style='candlestick', barup='red', bardown='green', volume=True, volup='red', voldown='green')
+
+cerebro.plot(iplot=False, style='candlestick',  # 设置主图行情数据的样式为蜡烛图
+             barup='red', bardown='green',      # 设置蜡烛图上涨和下跌的颜色
+             volume=True, volup='red', voldown='green') # 设置成交量在行情上涨和下跌情况下的颜色
 # %%
